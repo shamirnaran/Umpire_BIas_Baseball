@@ -1,0 +1,211 @@
+---
+title: "Math 536 Final Exam: Appendix R Code"
+author: "Shamir Naran"
+date: "Due May 15, 2020"
+output: pdf_document  
+---
+
+
+## Problem 1
+
+
+```{r, message = FALSE}
+library(ggplot2)
+library(esquisse)
+```
+
+
+```{r}
+# Read in the data
+
+baseball <- read.csv("baseball.csv", header = TRUE)
+```
+
+
+```{r}
+# Data Cleaning
+
+baseball <- na.omit(baseball) # remove all rows containing an NA
+baseball <- baseball[-c(1,4)] # we don't need "X" or the "pitcher" column
+```
+
+
+```{r}
+# change called ball to 0 and called strike to 1
+
+baseball$description <- ifelse(baseball$description == "ball", 0, 1)
+```
+
+
+```{r}
+# Define Strike Zone (from the internet)
+
+TopStrikeZone <- 3.5
+BotStrikeZone <- 1.5
+LeftStrikeZone <- -0.85
+RightStrikeZone <- 0.85
+StrikeZone <- data.frame(
+  x=c(LeftStrikeZone, LeftStrikeZone, RightStrikeZone, RightStrikeZone, LeftStrikeZone),
+  y=c(BotStrikeZone, TopStrikeZone, TopStrikeZone, BotStrikeZone, BotStrikeZone))
+```
+
+
+```{r message=FALSE, warning=FALSE}
+ggplot() +
+  geom_point(data = data.frame(baseball$plate_x[baseball$description == 0],baseball$plate_z[baseball$description == 0]),
+             mapping = aes(baseball$plate_x[baseball$description == 0],baseball$plate_z[baseball$description == 0]),
+             col = "gray50", shape = 1) +
+  geom_point(data = data.frame(baseball$plate_x[baseball$description == 1],baseball$plate_z[baseball$description == 1]),
+             mapping = aes(baseball$plate_x[baseball$description == 1],baseball$plate_z[baseball$description == 1]),
+             col = "blue2", shape = 3) +
+  geom_path(aes(x,y), data = StrikeZone, lwd = 1,col = "black") +
+  xlim(-5, 5) + ylim(-0.5, 5) +
+  labs(title = "Scatterplot of Balls and Strikes", x = "Horizontal Location (ft.)", y = "Vertical Location (ft.)")
+  
+```
+
+
+```{r}
+# Identify "Fringe Pitches" (add and subtract 0.05 ft. from the strike zone)
+
+baseball = baseball[!(baseball$plate_x > -0.75 & baseball$plate_x < 0.75 & baseball$plate_z > 1.7 & baseball$plate_z < 3.2),]
+baseball = baseball[(baseball$plate_x > -1 & baseball$plate_x < 1 & baseball$plate_z > 1.4 & baseball$plate_z < 3.5),]
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+ggplot() +
+  geom_point(data = data.frame(baseball$plate_x[baseball$description == 0],baseball$plate_z[baseball$description == 0]),
+             mapping = aes(baseball$plate_x[baseball$description == 0],baseball$plate_z[baseball$description == 0]),
+             col = "gray50", shape = 1) +
+  geom_point(data = data.frame(baseball$plate_x[baseball$description == 1],baseball$plate_z[baseball$description == 1]),
+             mapping = aes(baseball$plate_x[baseball$description == 1],baseball$plate_z[baseball$description == 1]),
+             col = "blue2", shape = 3) +
+  xlim(-1, 1) + ylim(1, 3.5) +
+  labs(title = "Scatterplot of Fringe Pitches", x = "Horizontal Location (ft.)", y = "Vertical Location (ft.)")
+```
+
+
+```{r}
+# Good mix of balls and strikes
+
+length(which(baseball$description == 0)) # number of balls in data
+length(which(baseball$description == 1)) # number of strikes in data
+
+length(which(baseball$description == 0)) / length(baseball$description) # % of balls
+length(which(baseball$description == 1)) / length(baseball$description) # % of strikes
+
+```
+
+
+```{r}
+# Create new Variables (count, run differential, distance)
+
+baseball[ , "count"] = ""
+baseball[ , "run_diff"] = ""
+baseball[ , "distance"] = ""
+
+baseball[baseball$ball == 3 & baseball$strikes < 2,]$count = "3less2"
+baseball[baseball$ball == 3 & baseball$strikes == 2,]$count = "full"
+baseball[baseball$ball != 3,]$count = "other"
+
+baseball$run_diff <- abs(baseball$home_score - baseball$away_score)
+
+baseball$distance <- sqrt((baseball$plate_x)^2+(baseball$plate_z-2.4)^2)
+```
+
+
+```{r}
+ggplot(baseball) +
+  aes(x = plate_x, y = plate_z, colour = count) +
+  geom_point(size = 1L) +
+  scale_color_hue() +
+  theme_minimal() +
+  facet_wrap(vars(description)) +
+  labs(title = "Cases", x = "Horizontal Location (ft.)", y = "Vertical Location (ft.)")
+```
+
+
+```{r}
+# Fit a Logistic Regression Model
+
+model <- glm(description ~ pitch_type + release_speed + balls + strikes + count + run_diff + distance,
+             data = baseball, family = "binomial")
+sum.model <- summary(model)
+sum.model
+```
+
+
+```{r}
+# Our diagnostic plot looks good
+
+pearson <- (baseball$description - model$fit) / (model$fit * (1-model$fit))
+est.ln.odds <- log(model$fit/(1-model$fit))
+loess1 = loess(pearson~est.ln.odds)
+plot(est.ln.odds,pearson)
+lines(est.ln.odds[order(est.ln.odds)],loess1$fit[order(est.ln.odds)])
+```
+
+
+```{r}
+# 95% Confidence Interval for all predictors
+
+lb <- exp(sum.model$coefficients[,1] - qnorm(0.975) * sum.model$coefficients[,2])
+ub <- exp(sum.model$coefficients[,1] + qnorm(0.975) * sum.model$coefficients[,2])
+
+cbind(lb,ub)
+```
+
+
+Significant predictors are release speed, balls, strikes, and distance.
+
+
+```{r}
+
+# Some calculations
+
+log(.99708)
+
+log(9.458974e-01)
+log(9.933937e-01)
+
+log(5.922246e-01)
+log(7.416091e-01)
+
+log(4.766717e-04)
+log(1.494886e-03)
+```
+
+
+According to this model, we're 95% confident that on average, holding all else constant ... 
+
+a one unit increase in release speed will decrease the odds of a called strike between [5.56% and 0.663%].
+
+a one unit increase in strikes will decrease the odds of a called strike between [52.38% and 52.38%].
+
+a one unit increase in balls will increase the odds of a called strike between [5.62% ,32.08%].
+
+a one unit increase in distance will decrease the odds of a called strike between [764.87% and 650.57%].
+
+
+```{r}
+# Lets predict holding all else constant
+
+full <- data.frame(pitch_type = "FF", release_speed = 94.3, balls = 3, strikes = 2,
+                   distance = 1, count = "full", run_diff = 1)
+
+three.less.two <- data.frame(pitch_type = "FF", release_speed = 94.3, balls = 3, strikes = 1,
+                   distance = 1, count = "3less2", run_diff = 1)
+
+other <- data.frame(pitch_type = "FF", release_speed = 94.3, balls = 0, strikes = 0,
+                   distance = 1, count = "other", run_diff = 1)
+
+
+predict.full <- predict.glm(model, newdata = full, type = "response")
+predict.three.less.two <- predict.glm(model, newdata = three.less.two, type = "response")
+predict.other <- predict.glm(model, newdata = other, type = "response")
+
+list(predict.full = predict.full, predict.three.less.two = predict.three.less.two, predict.other = predict.other)
+
+```
